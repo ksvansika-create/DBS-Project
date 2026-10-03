@@ -1,0 +1,11 @@
+SET FOREIGN_KEY_CHECKS=0;
+DROP TABLE IF EXISTS infrastructure_recommendations,pedestrian_zones,routes,incidents,traffic_data,violations,vehicles,locations;
+SET FOREIGN_KEY_CHECKS=1;
+CREATE TABLE locations(id INT PRIMARY KEY,name VARCHAR(80),type VARCHAR(20),lat DOUBLE,lng DOUBLE,density DOUBLE,speed DOUBLE,violations INT,pedestrians INT,freq INT,peak VARCHAR(50),main_violation VARCHAR(30));
+CREATE TABLE vehicles(vehicle_no VARCHAR(15) PRIMARY KEY,owner VARCHAR(50),vehicle_type VARCHAR(20));
+CREATE TABLE violations(id INT AUTO_INCREMENT PRIMARY KEY,vehicle_no VARCHAR(15),type VARCHAR(30),v_date DATE,location_id INT,fine INT,status VARCHAR(10),FOREIGN KEY(vehicle_no) REFERENCES vehicles(vehicle_no),FOREIGN KEY(location_id) REFERENCES locations(id));
+CREATE TABLE traffic_data(id INT AUTO_INCREMENT PRIMARY KEY,location_id INT,hr INT,density INT,FOREIGN KEY(location_id) REFERENCES locations(id));
+CREATE TABLE incidents(id INT AUTO_INCREMENT PRIMARY KEY,location_id INT,type VARCHAR(30),severity VARCHAR(10),reported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,affected_road VARCHAR(80),action VARCHAR(200),status VARCHAR(12) DEFAULT 'Active',FOREIGN KEY(location_id) REFERENCES locations(id));
+CREATE TABLE routes(id INT PRIMARY KEY,name VARCHAR(60),origin_id INT,dest_id INT,distance_km DOUBLE,base_minutes INT,level VARCHAR(10));
+CREATE TABLE pedestrian_zones(id INT PRIMARY KEY,location_id INT,name VARCHAR(60),zone_type VARCHAR(20),footfall INT,has_crossing BOOLEAN,has_footpath BOOLEAN,lat DOUBLE,lng DOUBLE);
+CREATE TABLE infrastructure_recommendations(id INT PRIMARY KEY,location_id INT,problem VARCHAR(120),solution VARCHAR(200),priority VARCHAR(10));
