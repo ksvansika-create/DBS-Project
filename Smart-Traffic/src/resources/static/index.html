@@ -1,0 +1,214 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Traffic Violation & Management System</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+<style>
+body{background:#f4f6f9;font-size:14px}
+#side{width:235px;position:fixed;top:0;bottom:0;background:#14213d;color:#cbd5e1;padding:14px 0;overflow:auto}
+#side h6{color:#fff;padding:0 16px 12px;border-bottom:1px solid #2b3a5c;line-height:1.3}
+#side a{display:block;padding:9px 16px;color:#cbd5e1;text-decoration:none;cursor:pointer}
+#side a.on,#side a:hover{background:#1f3266;color:#fff}
+main{margin-left:235px;padding:20px}
+.pg{display:none}.pg.on{display:block}
+.card{border:0;box-shadow:0 1px 3px #0001}
+.map{height:430px;border-radius:6px}
+.kpi b{font-size:22px}
+.bl{color:#fff;padding:2px 9px;border-radius:10px;font-size:12px;white-space:nowrap}
+.demo{background:#fff3cd;color:#664d03;padding:3px 10px;border-radius:4px;font-size:12px}
+.step{background:#e7efff;border-radius:6px;padding:8px 12px;margin:5px 0}
+tr.click{cursor:pointer}
+@media(max-width:800px){#side{position:static;width:auto}main{margin:0}}
+</style></head><body>
+<nav id="side"><h6>Smart Traffic Violation<br>& Management System</h6></nav>
+<main>
+<div class="d-flex justify-content-between align-items-center mb-3"><h4 id="title" class="m-0"></h4>
+<span class="demo">Demo Data / Simulated Traffic Data – not real-time government data</span></div>
+
+<section class="pg" id="dash"><div class="row g-3" id="kpis"></div>
+<div class="row g-3 mt-1"><div class="col-lg-7"><div class="card p-2"><div id="mDash" class="map"></div></div></div>
+<div class="col-lg-5"><div class="card p-3"><h6>Detection → Analysis → Solution (highest-traffic location)</h6><div id="flow"></div></div></div></div></section>
+
+<section class="pg" id="live"><div class="row g-3"><div class="col-lg-8"><div class="card p-2"><div id="mLive" class="map" style="height:520px"></div></div>
+<small class="text-muted">Use the layer control (top-right) to toggle traffic, violation hotspots, pedestrian areas, incidents and alternative routes. Click a marker.</small></div>
+<div class="col-lg-4"><div class="card p-3"><label class="form-label">Why is this road congested? Select a road:</label><select id="wsel" class="form-select mb-3"></select><div id="det"></div></div></div></div></section>
+
+<section class="pg" id="route"><div class="card p-3 mb-3"><div class="row g-2 align-items-end">
+<div class="col-md-4"><label>Starting location</label><select id="ro" class="form-select"></select></div>
+<div class="col-md-4"><label>Destination</label><select id="rd" class="form-select"></select></div>
+<div class="col-md-4"><button class="btn btn-primary w-100" onclick="planRoute()">Find routes</button></div></div>
+<small class="text-muted mt-2">Simulated routing from demo speeds between predefined locations. No live GPS is used.</small></div>
+<div class="row g-3"><div class="col-lg-5" id="rres"></div><div class="col-lg-7"><div class="card p-2"><div id="mRoute" class="map"></div></div></div></div></section>
+
+<section class="pg" id="hot"><div class="row g-3"><div class="col-lg-6"><div class="card p-3"><canvas id="cBar" height="200"></canvas></div></div>
+<div class="col-lg-6"><div class="card p-3"><canvas id="cLine" height="200"></canvas></div></div></div>
+<div class="card p-3 mt-3"><h6>Hotspot table (click a row for "why")</h6><div class="table-responsive" id="hTab"></div></div>
+<div class="row g-3 mt-1"><div class="col-lg-6"><div class="card p-3"><h6>Hourly heatmap (7 AM–12 PM)</h6><div id="heat"></div></div></div>
+<div class="col-lg-6"><div class="card p-3" id="hwhy">Select a hotspot.</div></div></div></section>
+
+<section class="pg" id="viol"><div class="row g-3"><div class="col-lg-4"><div class="card p-3"><h6>Violation types</h6><canvas id="cType"></canvas></div></div>
+<div class="col-lg-8"><div class="card p-3"><h6>Violations by weekday (recorded sample)</h6><canvas id="cWeek" height="110"></canvas><small class="text-muted">Highest violation windows follow peak hours: 8–11 AM and 5–8 PM (demo).</small></div></div></div>
+<h6 class="mt-4">Violation hotspots & prevention</h6><div class="row g-3" id="vCards"></div></section>
+
+<section class="pg" id="infra"><div class="mb-3"><select id="ifil" class="form-select w-auto" onchange="rInfra()"><option value="">All problems</option><option>Vehicle congestion</option><option>Pedestrian</option><option>Violations</option><option>School</option></select></div><div class="row g-3" id="iCards"></div></section>
+
+<section class="pg" id="ped"><div class="row g-3"><div class="col-lg-7"><div class="card p-2"><div id="mPed" class="map"></div></div><small class="text-muted">Red = missing crossing/footpath, blue = basic facilities present.</small></div><div class="col-lg-5" id="pCards"></div></div></section>
+
+<section class="pg" id="inc"><div class="card p-3 mb-3"><div class="row g-2">
+<div class="col-md-3"><select id="il" class="form-select"></select></div>
+<div class="col-md-3"><select id="it" class="form-select"></select></div>
+<div class="col-md-2"><select id="is" class="form-select"><option>Low</option><option>Medium</option><option>High</option></select></div>
+<div class="col-md-2"><input id="ir" class="form-control" placeholder="Affected road"></div>
+<div class="col-md-2"><button class="btn btn-primary w-100" onclick="addInc()">Report incident</button></div></div></div>
+<div class="card p-3"><div class="table-responsive" id="iTab"></div></div></section>
+
+<section class="pg" id="veh"><div class="card p-3"><div class="input-group mb-3" style="max-width:480px"><input id="vn" class="form-control" placeholder="e.g. TS09AB1234"><button class="btn btn-primary" onclick="findVeh()">Search</button></div><div id="vres"><small class="text-muted">Secondary feature. Try TS09AB1234, TS08CD5678, AP28EF9012, TS07GH3456.</small></div></div></section>
+
+<section class="pg" id="ana"><div class="row g-3" id="aK"></div><div class="row g-3 mt-1">
+<div class="col-lg-6"><div class="card p-3"><h6>Most congested roads</h6><canvas id="aCong"></canvas></div></div>
+<div class="col-lg-6"><div class="card p-3"><h6>Peak traffic hours (avg density)</h6><canvas id="aPeak"></canvas></div></div>
+<div class="col-lg-6"><div class="card p-3"><h6>Violation trend by weekday</h6><canvas id="aTrend"></canvas></div></div>
+<div class="col-lg-6"><div class="card p-3"><h6>Pedestrian hotspots (footfall)</h6><canvas id="aPed"></canvas></div></div>
+<div class="col-12"><div class="card p-3"><h6>Recommended infrastructure improvements (count across locations)</h6><div id="aRec"></div></div></div></div></section>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const LV=['Low','Moderate','Heavy','Severe'],COL=['#2e9e5b','#e0a800','#e8710a','#c62828'];
+const lvl=d=>d<40?0:d<60?1:d<80?2:3;
+const badge=d=>`<span class="bl" style="background:${COL[lvl(d)]}">${LV[lvl(d)]}</span>`;
+const vRisk=v=>v>=60?'High':v>=35?'Medium':'Low';
+const PAGES=[['dash','Dashboard'],['live','Live Traffic'],['route','Smart Route Planner'],['hot','Traffic Hotspots'],['viol','Violation Analysis'],['infra','Infrastructure Recommendations'],['ped','Pedestrian Safety'],['inc','Incident Management'],['veh','Vehicle Search'],['ana','Analytics']];
+const PREV={'Signal jumping':['Improve signal visibility','Add advance warning signs','Optimize signal timing','Increase monitoring during peak hours'],
+'Overspeeding':['Speed-limit signs and rumble strips','Speed-camera enforcement','Speed humps near crossings'],
+'Illegal parking':['Restrict parking in peak hours','Designated parking bays','Tow-away enforcement zones'],
+'Wrong-side driving':['Lane dividers and median barriers','One-way signage'],
+'No helmet':['Awareness drives','Checkpoints on entry roads'],'No seat belt':['Awareness drives','Camera-based detection']};
+const SUG={'Accident':'Dispatch police and ambulance; divert traffic to the nearest low-traffic route.','Road blockage':'Redirect traffic through the alternative route.','Vehicle breakdown':'Tow the vehicle; keep one lane open.','Road construction':'Work off-peak; place diversion signs.','Waterlogging':'Pump out water; divert light vehicles.','Signal failure':'Deploy manual traffic control; check signal power.'};
+let D={},cur='dash',selId=null;const CH={},M={};
+
+async function api(p,o){const r=await fetch('/api/'+p,o);return r.json()}
+async function load(){for(const t of ['locations','violations','incidents','routes','pedestrian_zones','traffic_data','infrastructure_recommendations'])D[t]=await api(t);
+$('side')||0;$('side').innerHTML+=PAGES.map(p=>`<a data-p="${p[0]}" onclick="go('${p[0]}')">${p[1]}</a>`).join('');
+const opts=D.locations.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+['wsel','ro','rd','il'].forEach(i=>$(i).innerHTML=opts);$('rd').selectedIndex=3;
+$('it').innerHTML=Object.keys(SUG).map(k=>`<option>${k}</option>`).join('');
+$('wsel').onchange=e=>sel(+e.target.value);go('dash');
+setInterval(()=>{D.locations.forEach(l=>{l.density=Math.max(15,Math.min(98,l.density+(Math.random()-.5)*6));l.speed=Math.max(8,Math.round(62-l.density*.55+(Math.random()-.5)*4))});
+if(['dash','live','hot','viol','ana'].includes(cur))render(cur)},7000)}
+
+/* ---------- Analysis engine (rule-based) ---------- */
+function causes(l){const c=[],inc=D.incidents.filter(i=>i.location_id==l.id&&i.status!='Resolved');
+if(l.density>=60)c.push(`High vehicle volume (${Math.round(l.density)}% of road capacity)`);
+if(l.pedestrians>=60)c.push('High pedestrian movement');
+if(l.type=='school')c.push('Nearby school – pickup/drop-off peaks');
+if(l.type=='market')c.push('Nearby commercial area with roadside parking');
+if(l.violations>=60)c.push(`Frequent violations (${l.main_violation.toLowerCase()})`);
+if(l.speed<20)c.push(`Very low average speed (${Math.round(l.speed)} km/h) – possible poor signal timing`);
+inc.forEach(i=>c.push('Active incident: '+i.type));return c}
+function recs(l){const R=[],e=`Density ${Math.round(l.density)}%, speed ${Math.round(l.speed)} km/h, peak ${l.peak}`;
+if(l.density>=60)R.push({k:'Vehicle congestion',p:'Heavy congestion at '+l.name,e,s:['Signal timing optimization','Alternative route planning','Road widening / extra lane study','One-way traffic planning'],b:'Shorter waiting time and smoother flow (to be validated with field surveys)'});
+if(l.type=='junction'||l.type=='highway')R.push({k:'Vehicle congestion',p:'Conflict points at '+l.name,e:`${l.violations} violations/month (demo)`,s:['Signal redesign','Roundabout feasibility study','Lane markings and traffic signs','Speed control measures'],b:'Fewer conflicts between vehicle streams'});
+if(l.pedestrians>=60)R.push({k:'Pedestrian',p:'High pedestrian exposure near '+l.name,e:`Pedestrian index ${l.pedestrians}/100`,s:['Footpath construction','Zebra crossing with pedestrian signal','Foot-over bridge study','Street lighting'],b:'Safer walking and fewer pedestrian–vehicle conflicts'});
+if(l.violations>=60)R.push({k:'Violations',p:`Recurring ${l.main_violation.toLowerCase()} at ${l.name}`,e:`${l.violations} violations/month (demo)`,s:PREV[l.main_violation],b:'Better compliance through prevention rather than after-the-fact fines'});
+if(l.type=='school')R.push({k:'School',p:'School-zone traffic risk',e:`Peak windows ${l.peak}`,s:['Dedicated pedestrian crossing','School-zone speed control','Pickup/drop-off zone','Traffic wardens in peak hours'],b:'Safer children movement and less kerbside congestion'});
+return R}
+function altOf(l){const a=D.locations.filter(x=>x.id!=l.id).sort((x,y)=>x.density-y.density)[0];return `Divert via ${a.name} (${LV[lvl(a.density)]} traffic)`}
+function why(l){const c=causes(l);return `<h6 class="mt-3">Why is ${l.name} congested?</h6><ul>${c.map(x=>`<li>${x}</li>`).join('')||'<li>No major factor detected</li>'}</ul>
+<h6>Suggested solutions</h6><ol><li><b>Immediate:</b> ${altOf(l)}</li>${[...new Set(recs(l).flatMap(r=>r.s))].slice(0,5).map(s=>`<li>${s}</li>`).join('')}</ol>`}
+const hav=(a,b)=>{const r=Math.PI/180,x=(b.lat-a.lat)*r,y=(b.lng-a.lng)*r,h=Math.sin(x/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(y/2)**2;return 12742*Math.asin(Math.sqrt(h))};
+
+/* ---------- Maps & charts ---------- */
+function mp(id){if(!M[id]){const m=L.map(id).setView([17.497,78.42],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(m);M[id]={m,g:{}}}setTimeout(()=>M[id].m.invalidateSize(),60);return M[id]}
+function grp(id,k){const o=mp(id);if(!o.g[k])o.g[k]=L.layerGroup().addTo(o.m);o.g[k].clearLayers();return o.g[k]}
+function ch(id,cfg){CH[id]&&CH[id].destroy();CH[id]=new Chart($(id),cfg)}
+function drawTraffic(id,g,click){D.locations.forEach(l=>L.circleMarker([l.lat,l.lng],{radius:12,color:'#fff',weight:2,fillColor:COL[lvl(l.density)],fillOpacity:.9}).addTo(g)
+.bindTooltip(`${l.name} – ${LV[lvl(l.density)]}`).on('click',()=>click&&click(l.id)))}
+const wd=()=>{const a=[0,0,0,0,0,0,0];D.violations.forEach(v=>a[(new Date(v.v_date).getDay()+6)%7]++);return a};
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const tbl=(h,rows,cls='')=>`<table class="table table-sm align-middle"><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+
+/* ---------- Pages ---------- */
+function render(p){({dash:rDash,live:rLive,route:rRoute,hot:rHot,viol:rViol,infra:rInfra,ped:rPed,inc:rInc,veh(){},ana:rAna})[p]()}
+function go(p){cur=p;$('title').textContent=PAGES.find(x=>x[0]==p)[1];
+document.querySelectorAll('.pg').forEach(e=>e.classList.toggle('on',e.id==p));
+document.querySelectorAll('#side a').forEach(a=>a.classList.toggle('on',a.dataset.p==p));render(p)}
+
+function rDash(){const Ls=D.locations,avg=Ls.reduce((s,l)=>s+l.density,0)/Ls.length,sp=Ls.reduce((s,l)=>s+l.speed,0)/Ls.length;
+const K=[['Current Traffic Level',badge(avg)],['Congested Roads',Ls.filter(l=>l.density>=60).length+' / '+Ls.length],['High-Risk Violation Zones',Ls.filter(l=>l.violations>=60).length],['Traffic Incidents',D.incidents.filter(i=>i.status!='Resolved').length],['Avg Traffic Speed',Math.round(sp)+' km/h'],['Active Alternative Routes',D.routes.length]];
+$('kpis').innerHTML=K.map(k=>`<div class="col-md-2 col-6"><div class="card kpi p-3"><small class="text-muted">${k[0]}</small><b>${k[1]}</b></div></div>`).join('');
+drawTraffic('mDash',grp('mDash','t'),id=>{selId=id;go('live')});
+const t=[...Ls].sort((a,b)=>b.density-a.density)[0];
+$('flow').innerHTML=['1. Data received: traffic, violation and location feeds (simulated)',`2. High traffic detected at <b>${t.name}</b> ${badge(t.density)}`,`3. Analysis: density ${Math.round(t.density)}%, speed ${Math.round(t.speed)} km/h, peak ${t.peak}`,'4. Causes: '+(causes(t).join('; ')||'—'),'5. <b>Immediate solution:</b> '+altOf(t),'6. <b>Long-term solution:</b> '+[...new Set(recs(t).flatMap(r=>r.s))].slice(0,4).join(', ')].map(s=>`<div class="step">${s}</div>`).join('')}
+
+function sel(id){selId=id;const l=D.locations.find(x=>x.id==id);$('wsel').value=id;const o=mp('mLive');o.m.flyTo([l.lat,l.lng],14);
+const r=recs(l)[0];
+$('det').innerHTML=`<table class="table table-sm mb-0"><tr><td>Road</td><td><b>${l.name}</b></td></tr><tr><td>Traffic</td><td>${badge(l.density)}</td></tr><tr><td>Vehicle density</td><td>${Math.round(l.density)}% of capacity</td></tr><tr><td>Average speed</td><td>${Math.round(l.speed)} km/h</td></tr><tr><td>Violations</td><td>${vRisk(l.violations)} (${l.violations}/month)</td></tr><tr><td>Peak time</td><td>${l.peak}</td></tr><tr><td>Recommendation</td><td>${altOf(l)}${r?'; '+r.s[0].toLowerCase():''}</td></tr></table>`+why(l)}
+function rLive(){const o=mp('mLive'),first=!o.g.t;
+const t=grp('mLive','t'),v=grp('mLive','v'),p=grp('mLive','p'),i=grp('mLive','i'),r=grp('mLive','r');
+if(first)L.control.layers(null,{'Traffic':t,'Violation hotspots':v,'Pedestrian areas':p,'Incidents':i,'Alternative routes':r}).addTo(o.m);
+drawTraffic('mLive',t,sel);
+D.locations.filter(l=>l.violations>=60).forEach(l=>L.circle([l.lat,l.lng],{radius:500,color:'#7b1fa2',fill:false,dashArray:'5'}).addTo(v).bindTooltip('Violation hotspot: '+l.name));
+D.pedestrian_zones.forEach(z=>L.circle([z.lat,z.lng],{radius:z.footfall/6,color:'#1565c0',weight:1}).addTo(p).bindTooltip(z.name+' (pedestrian-heavy)'));
+D.incidents.filter(x=>x.status!='Resolved').forEach(x=>{const l=D.locations.find(y=>y.id==x.location_id);L.marker([l.lat,l.lng]).addTo(i).bindTooltip(`${x.type} – ${x.severity}`)});
+D.routes.forEach(x=>{const a=D.locations.find(y=>y.id==x.origin_id),b=D.locations.find(y=>y.id==x.dest_id);L.polyline([[a.lat,a.lng],[b.lat,b.lng]],{color:COL[LV.indexOf(x.level)],dashArray:'8',weight:3}).addTo(r).bindTooltip(`${x.name}: ${x.level}`)});
+sel(selId||[...D.locations].sort((a,b)=>b.density-a.density)[0].id);o.m.setView([17.497,78.42],12)}
+
+function rRoute(){if(!$('rres').innerHTML)planRoute()}
+function planRoute(){const a=D.locations.find(x=>x.id==$('ro').value),b=D.locations.find(x=>x.id==$('rd').value);
+if(a.id==b.id){$('rres').innerHTML='<div class="alert alert-warning">Choose two different locations.</div>';return}
+const km=hav(a,b)*1.35,base=(a.speed+b.speed)/2,worst=a.density>b.density?a:b;
+const R=[{n:'Route 1 – Main corridor',d:km,s:Math.max(9,base*.9),w:`Shortest path but passes through congestion near ${worst.name}`},
+{n:'Route 2 – Inner-road bypass',d:km*1.12,s:30,w:'Avoids main junctions; slightly longer but steadier speed'},
+{n:'Route 3 – Outer / highway link',d:km*1.3,s:38,w:'Longer, free-flowing; best when the main corridor is Heavy'}].map(r=>({...r,t:Math.round(r.d/r.s*60),lv:r.s<15?3:r.s<22?2:r.s<32?1:0}));
+const best=R.reduce((x,y)=>y.t<x.t?y:x);
+$('rres').innerHTML=`<div class="demo mb-2 d-inline-block">Simulated route estimates</div>`+R.map(r=>`<div class="card p-3 mb-2 ${r===best?'border border-success':''}"><div class="d-flex justify-content-between"><b>${r.n}</b>${r===best?'<span class="bl" style="background:#2e9e5b">Recommended</span>':''}</div>
+<div>${r.t} min · ${r.d.toFixed(1)} km · <span class="bl" style="background:${COL[r.lv]}">${LV[r.lv]} traffic</span></div><small class="text-muted">${r.w}</small></div>`).join('');
+const g=grp('mRoute','r');L.marker([a.lat,a.lng]).addTo(g).bindTooltip('Start: '+a.name);L.marker([b.lat,b.lng]).addTo(g).bindTooltip('End: '+b.name);
+R.forEach((r,i)=>{const m=[(a.lat+b.lat)/2+(i-1)*.007,(a.lng+b.lng)/2+(i-1)*.007];L.polyline([[a.lat,a.lng],m,[b.lat,b.lng]],{color:COL[r.lv],weight:r===best?6:3,dashArray:r===best?null:'6'}).addTo(g).bindTooltip(r.n)});
+mp('mRoute').m.fitBounds([[a.lat,a.lng],[b.lat,b.lng]],{padding:[40,40]})}
+
+function rHot(){const S=[...D.locations].sort((a,b)=>b.density-a.density);
+ch('cBar',{type:'bar',data:{labels:S.map(l=>l.name),datasets:[{label:'Congestion density %',data:S.map(l=>Math.round(l.density)),backgroundColor:S.map(l=>COL[lvl(l.density)])}]},options:{plugins:{legend:{display:false}}}});
+const ids=[...new Set(D.traffic_data.map(t=>t.location_id))],hrs=[7,8,9,10,11,12];
+ch('cLine',{type:'line',data:{labels:hrs.map(h=>h+':00'),datasets:ids.map((id,i)=>({label:D.locations.find(l=>l.id==id).name,tension:.3,borderColor:['#1f3266','#e8710a','#2e9e5b','#7b1fa2'][i],data:hrs.map(h=>D.traffic_data.find(t=>t.location_id==id&&t.hr==h).density)}))},options:{plugins:{title:{display:true,text:'Hourly traffic density (sample)'}}}});
+$('hTab').innerHTML=tbl(['Location','Days/month heavy','Avg congestion','Peak hours','Incidents','Violations'],S.map(l=>`<tr class="click" onclick="hw(${l.id})"><td>${l.name}</td><td>${l.freq}</td><td>${badge(l.density)} ${Math.round(l.density)}%</td><td>${l.peak}</td><td>${D.incidents.filter(i=>i.location_id==l.id).length}</td><td>${l.violations}</td></tr>`));
+$('heat').innerHTML=tbl(['Location',...hrs],ids.map(id=>`<tr><td>${D.locations.find(l=>l.id==id).name}</td>${hrs.map(h=>{const d=D.traffic_data.find(t=>t.location_id==id&&t.hr==h).density;return `<td style="background:${COL[lvl(d)]};color:#fff">${d}</td>`}).join('')}</tr>`));
+hw(S[0].id)}
+function hw(id){$('hwhy').innerHTML=`<h6>${D.locations.find(l=>l.id==id).name}</h6>`+why(D.locations.find(l=>l.id==id))}
+
+function rViol(){const T={};D.violations.forEach(v=>T[v.type]=(T[v.type]||0)+1);
+ch('cType',{type:'doughnut',data:{labels:Object.keys(T),datasets:[{data:Object.values(T),backgroundColor:['#14213d','#1f3266','#4a6fa5','#e8710a','#e0a800','#2e9e5b']}]}});
+ch('cWeek',{type:'bar',data:{labels:WD,datasets:[{label:'Violations',data:wd(),backgroundColor:'#1f3266'}]},options:{plugins:{legend:{display:false}}}});
+$('vCards').innerHTML=[...D.locations].sort((a,b)=>b.violations-a.violations).slice(0,4).map(l=>`<div class="col-md-6"><div class="card p-3"><b>Hotspot: ${l.name}</b><div>Problem: frequent <b>${l.main_violation.toLowerCase()}</b> · ${l.violations}/month · risk ${vRisk(l.violations)}</div><b class="mt-2">Recommendation</b><ul class="mb-0">${PREV[l.main_violation].map(s=>`<li>${s}</li>`).join('')}</ul></div></div>`).join('')}
+
+function rInfra(){const f=$('ifil').value;
+const cards=D.locations.flatMap(l=>recs(l)).filter(r=>!f||r.k==f);
+$('iCards').innerHTML=cards.map(r=>`<div class="col-lg-6"><div class="card p-3"><span class="bl align-self-start mb-2" style="background:#1f3266">${r.k}</span>
+<div><b>Problem:</b> ${r.p}</div><div><b>Evidence:</b> ${r.e}</div><div><b>Suggested solution:</b><ul class="mb-1">${r.s.map(s=>`<li>${s}</li>`).join('')}</ul></div><div><b>Expected benefit:</b> ${r.b}</div></div></div>`).join('')||'<p>No recommendations.</p>'}
+
+function pRecs(z){const r=[];if(!z.has_crossing)r.push('Zebra crossing + pedestrian signal');if(!z.has_footpath)r.push('Footpath construction');if(z.footfall>=1000&&!z.has_crossing)r.push('Foot-over bridge study');
+if(['school','hospital','college'].includes(z.zone_type))r.push('Street lighting','Guard rails where appropriate');if(z.zone_type=='bus_stop')r.push('Bus bay and shelter');return r}
+function rPed(){const g=grp('mPed','z');D.pedestrian_zones.forEach(z=>{const bad=!z.has_crossing||!z.has_footpath;L.circle([z.lat,z.lng],{radius:z.footfall/4,color:bad?'#c62828':'#1565c0'}).addTo(g).bindPopup(`<b>${z.name}</b><br>${pRecs(z).join('<br>')||'Facilities adequate'}`)});
+$('pCards').innerHTML=[...D.pedestrian_zones].sort((a,b)=>b.footfall-a.footfall).map(z=>`<div class="card p-3 mb-2"><b>${z.name}</b> <small class="text-muted">${z.zone_type.replace('_',' ')} · footfall ${z.footfall}/hr (demo)</small>
+<div>Crossing: ${z.has_crossing?'Yes':'<b class="text-danger">No</b>'} · Footpath: ${z.has_footpath?'Yes':'<b class="text-danger">No</b>'}</div><div class="mt-1">Suggested: ${pRecs(z).join(', ')||'None'}</div></div>`).join('')}
+
+async function rInc(){D.incidents=await api('incidents');
+$('iTab').innerHTML=tbl(['Location','Type','Severity','Time','Affected road','Suggested response','Status'],D.incidents.map(i=>`<tr><td>${D.locations.find(l=>l.id==i.location_id).name}</td><td>${i.type}</td><td><span class="bl" style="background:${{High:COL[3],Medium:COL[2],Low:COL[0]}[i.severity]}">${i.severity}</span></td><td>${String(i.reported_at).replace('T',' ').slice(0,16)}</td><td>${i.affected_road||''}</td><td>${i.action}</td><td>${i.status}</td></tr>`))}
+async function addInc(){const l=D.locations.find(x=>x.id==$('il').value),t=$('it').value;
+await api('incidents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location_id:l.id,type:t,severity:$('is').value,affected_road:$('ir').value||l.name,action:SUG[t]+' Alt: '+altOf(l)})});$('ir').value='';rInc()}
+
+async function findVeh(){const r=await api('vehicles/'+encodeURIComponent($('vn').value.trim()));
+$('vres').innerHTML=!r.vehicle.length?'<div class="alert alert-warning">Vehicle not found.</div>':`<p><b>${r.vehicle[0].vehicle_no}</b> · ${r.vehicle[0].vehicle_type} · ${r.vehicle[0].owner}</p>`+tbl(['Violation','Date','Location','Fine (₹)','Status'],r.violations.map(v=>`<tr><td>${v.type}</td><td>${v.v_date}</td><td>${v.location}</td><td>${v.fine}</td><td>${v.status}</td></tr>`))}
+
+function rAna(){const Ls=D.locations,S=[...Ls].sort((a,b)=>b.density-a.density);
+const K=[['Violations (monthly, demo)',Ls.reduce((s,l)=>s+l.violations,0)],['Total incidents',D.incidents.length],['Traffic hotspots',Ls.filter(l=>l.density>=60).length],['Pedestrian hotspots',D.pedestrian_zones.filter(z=>!z.has_crossing).length+' without crossing']];
+$('aK').innerHTML=K.map(k=>`<div class="col-md-3 col-6"><div class="card kpi p-3"><small class="text-muted">${k[0]}</small><b>${k[1]}</b></div></div>`).join('');
+ch('aCong',{type:'bar',data:{labels:S.slice(0,5).map(l=>l.name),datasets:[{data:S.slice(0,5).map(l=>Math.round(l.density)),backgroundColor:S.slice(0,5).map(l=>COL[lvl(l.density)])}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
+const hrs=[7,8,9,10,11,12];ch('aPeak',{type:'line',data:{labels:hrs.map(h=>h+':00'),datasets:[{label:'Avg density %',borderColor:'#1f3266',tension:.3,data:hrs.map(h=>{const x=D.traffic_data.filter(t=>t.hr==h);return Math.round(x.reduce((s,t)=>s+t.density,0)/x.length)})}]}});
+ch('aTrend',{type:'line',data:{labels:WD,datasets:[{label:'Violations',borderColor:'#e8710a',tension:.3,data:wd()}]}});
+ch('aPed',{type:'bar',data:{labels:D.pedestrian_zones.map(z=>z.name),datasets:[{data:D.pedestrian_zones.map(z=>z.footfall),backgroundColor:'#1565c0'}]},options:{plugins:{legend:{display:false}}}});
+const c={};Ls.flatMap(recs).flatMap(r=>r.s).forEach(s=>c[s]=(c[s]||0)+1);
+$('aRec').innerHTML=tbl(['Improvement','Locations recommended'],Object.entries(c).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`))}
+load();
+</script></body></html>
